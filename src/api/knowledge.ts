@@ -76,3 +76,11 @@ export function getfragmentList(docId: string) {
 		method: "get",
 	});
 }
+
+export function getExternalKnowledgeApiList(params?: any) {
+	return request({
+		url: "/external-knowledge-api/list",
+		method: "get",
+		params: params,
+	});
+}

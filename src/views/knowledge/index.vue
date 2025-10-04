@@ -23,6 +23,7 @@ import {
 	createKnowledgeReq,
 	getKnowledge,
 	delKnowledge,
+	getExternalKnowledgeApiList,
 } from "@/api/knowledge";
 import { useRouter } from "vue-router";
 import { t } from "@/locales";
@@ -30,7 +31,7 @@ import { getModelListByCategory } from "@/api/model";
 import { getPromptTemplateListByCategory } from "@/api/promptTemplate";
 
 onMounted(() => {
-	fetchData(), getModelList(), getPromptTemplateList();
+	fetchData(), getModelList(), getPromptTemplateList(), getExternalApiList();
 });
 
 const router = useRouter();
@@ -42,6 +43,7 @@ const formValue = ref({
 	kid: "", // 附件id
 	uid: "", // 用户id
 	kname: "", // 知识库名称
+	provider: "LOCAL", // 知识库提供商类型
 	share: "0", // 是否分享
 	description: "", // 知识库描述
 	knowledgeSeparator: "", // 知识分隔符
@@ -52,6 +54,8 @@ const formValue = ref({
 	vectorModelName: "weaviate", //  向量库
 	embeddingModelName: "baai/bge-m3", //  向量模型
 	promptTemplateId: "", //  提示词模板ID
+	externalKnowledgeApiId: "", // 外部知识库API配置ID
+	externalKnowledgeId: "", // 外部知识库ID
 });
 
 async function submitForm() {
@@ -103,8 +107,14 @@ const getVector = reactive([
 	{ label: "weaviate", value: "weaviate" },
 ]);
 
+const providerOptions = ref([
+	{ label: '本地知识库', value: 'LOCAL' },
+	{ label: '外部知识库', value: 'EXTERNAL' },
+]);
+
 const getVectorModel = ref([]);
 const getPromptTemplate = ref([]);
+const externalApiList = ref([]);
 
 async function getModelList() {
 	try {
@@ -121,6 +131,15 @@ async function getPromptTemplateList() {
 		getPromptTemplate.value = res.rows;
 	} catch (error) {
 		message.error("获取提示词模板列表失败");
+	}
+}
+
+async function getExternalApiList() {
+	try {
+		const res = await getExternalKnowledgeApiList();
+		externalApiList.value = res.rows || [];
+	} catch (error) {
+		message.error("获取外部知识库API列表失败");
 	}
 }
 
@@ -280,6 +299,13 @@ const fetchData = async () => {
 						</n-gi>
 
 						<n-gi :span="12">
+							<n-form-item label="知识库类型" required>
+								<n-select :options="providerOptions" v-model:value="formValue.provider"
+									placeholder="请选择知识库类型" clearable />
+							</n-form-item>
+						</n-gi>
+
+						<n-gi :span="12">
 							<n-form-item label="分隔符">
 								<n-input v-model:value="formValue.knowledgeSeparator" placeholder="请输入知识分隔符"
 									clearable />
@@ -339,6 +365,25 @@ const fetchData = async () => {
 									clearable
 								>
 								</n-select>
+							</n-form-item>
+						</n-gi>
+
+						<n-gi :span="12" v-if="formValue.provider === 'EXTERNAL'">
+							<n-form-item label="外部知识库API" required>
+								<n-select
+									:options="externalApiList"
+									v-model:value="formValue.externalKnowledgeApiId"
+									value-field="id"
+									label-field="name"
+									placeholder="请选择外部知识库API"
+									clearable
+								/>
+							</n-form-item>
+						</n-gi>
+
+						<n-gi :span="12" v-if="formValue.provider === 'EXTERNAL'">
+							<n-form-item label="外部知识库ID" required>
+								<n-input v-model:value="formValue.externalKnowledgeId" placeholder="请输入外部知识库ID" clearable />
 							</n-form-item>
 						</n-gi>
 
