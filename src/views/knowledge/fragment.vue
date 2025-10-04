@@ -10,9 +10,11 @@ import { SvgIcon } from "@/components/common";
 const router = useRouter();
 
 const docId = ref<string>("");
+const kid = ref<string>("");
 
 onMounted(() => {
 	docId.value = router.currentRoute.value.query.docId as string;
+	kid.value = router.currentRoute.value.query.kid as string;
 	fetchData();
 });
 
@@ -70,7 +72,7 @@ const tableData = ref([]);
 const fetchData = async () => {
 	try {
 		// 发起一个请求
-		const [err, result] = await to(getfragmentList(docId.value));
+		const [err, result] = await to(getfragmentList(docId.value, kid.value));
 		console.log("fragmenresult===", result);
 		if (err) {
 			message.error(err.message);

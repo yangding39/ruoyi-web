@@ -152,7 +152,7 @@ function handleBeforeUpload() {
 
 // 操作函数
 function handleActionButtonClick(row: any, action1: string): void {
-	router.push({ path: "/fragment/t", query: { docId: row.docId } });
+	router.push({ path: "/fragment/t", query: { docId: row.docId, kid: kid.value } });
 }
 
 function activate() {

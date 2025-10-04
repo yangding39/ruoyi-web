@@ -70,10 +70,11 @@ export function delKnowledgeDetail(params: KnowledgeDetailDelReq) {
 	});
 }
 
-export function getfragmentList(docId: string) {
+export function getfragmentList(docId: string, kid?: string) {
 	return request({
 		url: "/knowledge/fragment/list/" + docId,
 		method: "get",
+		params: kid ? { kid } : undefined,
 	});
 }
 
