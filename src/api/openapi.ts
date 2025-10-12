@@ -261,6 +261,7 @@ export const subModel= async (opt: subModelType)=>{
            ,hasAttachment: opt.hasAttachment
            ,autoSelectModel: opt.autoSelectModel
            ,conversationId: convoId
+           ,sessionId: (opt.uuid != null ? Number(opt.uuid) : undefined)
         }
 
         let headers=   {'Content-Type': 'application/json;charset=UTF-8',

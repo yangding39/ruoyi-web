@@ -35,6 +35,7 @@ const textRef = ref<HTMLElement>()
 const mdi = new MarkdownIt({
   html: false,
   linkify: true,
+  breaks: true,
   highlight(code, language) {
     const validLang = !!(language && hljs.getLanguage(language))
     if (validLang) {
@@ -64,6 +65,9 @@ const wrapClass = computed(() => {
 const text = computed(() => {
   let value = props.text ?? ''
   if (!props.asRawText){
+    // 处理后端返回内容中的转义换行，确保展示换行
+    value = value.replaceAll('\\r\\n', '\n')
+    value = value.replaceAll('\\n', '\n')
     value = value.replace(/\\\( *(.*?) *\\\)/g, '$$$1$$');
     //value = value.replace(/\\\((.*?)\\\)/g, '$$$1$$');
     value = value.replace(/\\\[ *(.*?) *\\\]/g, '$$$$$1$$$$');
