@@ -6,6 +6,12 @@ import {LoginFrom,UserData} from "@/typings/user";
 import { doLogin,loginOut } from '@/api/user'
 import { removeToken,setToken,getToken } from '@/store/modules/auth/helper'
 import { to } from 'await-to-js';
+import { clearAppCachesExceptToken } from '@/utils/clearCache'
+import { useChatStore } from '@/store/modules/chat'
+import { useSettingStore } from '@/store/modules/settings'
+import { usePromptStore } from '@/store/modules/prompt'
+import { useAppStore } from '@/store/modules/app'
+import { gptConfigStore, gptServerStore } from '@/store/homeStore'
 
 const token = ref(getToken())
 
@@ -24,6 +30,30 @@ export const useUserStore = defineStore('user-store', {
         // token本地存储
         setToken(data.token);
         token.value = data.token;
+        // 登录成功后清空跨账号缓存并重置内存状态
+        try {
+          clearAppCachesExceptToken();
+        } catch (e) {}
+        try {
+          const chatStore = useChatStore();
+          chatStore.$reset();
+        } catch (e) {}
+        try {
+          const settingStore = useSettingStore();
+          settingStore.resetSetting();
+        } catch (e) {}
+        try {
+          const promptStore = usePromptStore();
+          promptStore.updatePromptList([] as any);
+        } catch (e) {}
+        try {
+          const appStore = useAppStore();
+          appStore.$reset();
+        } catch (e) {}
+        try {
+          gptConfigStore.setInit();
+          gptServerStore.setInit();
+        } catch (e) {}
         return Promise.resolve();
       }
       return Promise.reject(err);
@@ -37,6 +67,30 @@ export const useUserStore = defineStore('user-store', {
       await loginOut();
       token.value = '';
       removeToken();
+      // 退出后清空缓存并重置内存状态
+      try {
+        clearAppCachesExceptToken();
+      } catch (e) {}
+      try {
+        const chatStore = useChatStore();
+        chatStore.$reset();
+      } catch (e) {}
+      try {
+        const settingStore = useSettingStore();
+        settingStore.resetSetting();
+      } catch (e) {}
+      try {
+        const promptStore = usePromptStore();
+        promptStore.updatePromptList([] as any);
+      } catch (e) {}
+      try {
+        const appStore = useAppStore();
+        appStore.$reset();
+      } catch (e) {}
+      try {
+        gptConfigStore.setInit();
+        gptServerStore.setInit();
+      } catch (e) {}
     },
    
     updateUserInfo(userInfo: Partial<UserInfo>) {
