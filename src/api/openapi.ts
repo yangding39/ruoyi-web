@@ -280,12 +280,22 @@ export const subModel= async (opt: subModelType)=>{
                     try{
                         // TODO 思考处理，DeepSeek  API 字段reasoning_content ，本地部署标签<think> 
                         const obj= JSON.parse(data );
+                        // 若是错误 JSON（如 code/reason/message），走错误回调，不拼接为文本
+                        const hasErrorShape = obj && (obj.error || obj.code || obj.reason || obj.message)
+                        const hasNoChoices = !obj?.choices
+                        if (hasErrorShape && hasNoChoices) {
+                            opt.onError && opt.onError(obj)
+                            return
+                        }
                         opt.onMessage({text:obj.choices[0].delta?.content??obj.choices[0].delta?.reasoning_content??'' ,isFinish:obj.choices[0].finish_reason!=null })
                     }catch{
-                        opt.onMessage({
-                            text: data,
-                            isFinish: false
-                        });
+                        // 非 JSON 或解析失败：若包含明显鉴权失败关键词，则走错误回调
+                        const s = (data || '').toString()
+                        if (/FAILED_TO_AUTH|unauthorized|未认证|认证失败|invalid\s*api\s*key/i.test(s)) {
+                            opt.onError && opt.onError({ reason: s })
+                            return
+                        }
+                        opt.onMessage({ text: data, isFinish: false });
                     }
 
                  }
@@ -496,6 +506,20 @@ export const getHistoryMessage= async (dataSources:Chat.Chat[],loadingCnt=1 ,sta
     //const loadingCnt= 1;// 1就是没有loading，3 就是有loading
     let istart = (isNumber( start)&& start>=0 )? Math.min(start  ,   dataSources.length - loadingCnt ):  dataSources.length- loadingCnt  ;
     mlog('istart',istart, start);
+    const isErrorLike = (txt: any): boolean => {
+        try {
+            if (typeof txt === 'string') {
+                const s = txt.trim()
+                // 纯 JSON 错误或常见错误关键词
+                if (s.startsWith('{') && s.endsWith('}')) {
+                    const o = JSON.parse(s)
+                    if (o && (('code' in o) || ('reason' in o) || ('message' in o))) return true
+                }
+                if (/失败|错误|FAILED|fail|unauthorized|未认证|未找到模型|模型选择/.test(s)) return true
+            }
+        } catch {}
+        return false
+    }
     for( let ii=  istart  ; ii>=0 ; ii-- ){ //let o of dataSources.value
         if(i>=gptConfigStore.myData.talkCount) break;
         i++;
@@ -503,6 +527,9 @@ export const getHistoryMessage= async (dataSources:Chat.Chat[],loadingCnt=1 ,sta
         let o = dataSources[ii];
         //mlog('o',ii ,o);
         let content= o.text;
+        // 保留助手错误消息，仍跳过占位与空内容
+        if (o.loading) continue
+        if (!content || (typeof content === 'string' && content.trim() === '')) continue
         if( o.inversion && o.opt?.images && o.opt.images.length>0 ){
             //获取附件信息 比如 图片 文件等
             try{
