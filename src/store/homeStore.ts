@@ -35,6 +35,8 @@ export interface gptConfigType{
     kName:string //知识库名称
     gpts?:gptsType
     uuid?:number
+    conversationId?:string
+    sessionSynced?:boolean // 首次消息是否已在后端创建会话
     temperature?:number // 随机性 : 值越大，回复越随机
     top_p?:number // 核采样 : 与随机性类似，但不要和随机性一起更改
     frequency_penalty?:number
@@ -62,6 +64,8 @@ let v:gptConfigType={
     userModel: '',
     talkCount: 10,
     systemMessage: '',
+    conversationId: undefined,
+    sessionSynced: false,
     temperature: 0.5,
     top_p: 1,
     presence_penalty: 0,

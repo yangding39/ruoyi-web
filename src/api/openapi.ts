@@ -240,6 +240,13 @@ export const subModel= async (opt: subModelType)=>{
         frequency_penalty = gStore.frequency_penalty??frequency_penalty;
         max_tokens= gStore.max_tokens;
     }
+    const convoId = (()=>{
+        if(opt.uuid){
+            const cs = new chatSetting(+opt.uuid)
+            return cs.getGptConfig().conversationId
+        }
+        return undefined
+    })()
     let body ={
             max_tokens ,
             model ,
@@ -253,6 +260,7 @@ export const subModel= async (opt: subModelType)=>{
            ,appId: opt.appId
            ,hasAttachment: opt.hasAttachment
            ,autoSelectModel: opt.autoSelectModel
+           ,conversationId: convoId
         }
 
         let headers=   {'Content-Type': 'application/json;charset=UTF-8',

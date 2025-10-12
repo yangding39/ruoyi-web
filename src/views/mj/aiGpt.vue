@@ -5,6 +5,7 @@ import { useChat } from '../chat/hooks/useChat'
 import {  homeStore, useChatStore } from '@/store'
 import { getInitChat, mlog, subModel,getSystemMessage , localSaveAny, canVisionModel
     ,isTTS, subTTS, file2blob, whisperUpload, getHistoryMessage, checkDisableGpt4, chatSetting, isCanBase64Model, } from '@/api'
+import { createSession } from '@/api/session'
 //import { isNumber } from '@/utils/is'
 import { useMessage  } from "naive-ui";
 import { t } from "@/locales";
@@ -266,10 +267,63 @@ watch(()=>homeStore.myData.act, async (n)=>{
     }
 })
 
+import { createSession, getSessionById } from '@/api/session'
+import { getUserInfo } from '@/api/user'
+
 const submit= (model:string, message:any[],opt?:any)=>{
     mlog('提交Model', model  );
     const chatSet = new chatSetting(   +st.value.uuid  );
     const nGptStore =   chatSet.getGptConfig()  ;
+    
+    // 若无会话ID，首次发消息时创建后端会话，并把本地 uuid 作为 id 透传
+    if(!nGptStore.conversationId){
+        // 生成短ID：移除连字符并截断至 32 字符，避免数据库列长度溢出
+        const cid = (() => {
+            try {
+                if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                    return crypto.randomUUID().replace(/-/g, '').slice(0, 32)
+                }
+                const raw = Date.now().toString(36) + Math.random().toString(36).slice(2)
+                return raw.replace(/[^a-z0-9]/gi, '').slice(0, 32)
+            } catch {
+                return ('c' + Date.now().toString(36)).slice(0, 32)
+            }
+        })()
+        const last = message[message.length-1]
+        let sessionTitle = 'New Chat'
+        try{
+            if(typeof last?.content === 'string') sessionTitle = last.content
+            else if(Array.isArray(last?.content)){
+                const textItem = last.content.find((c:any)=>c?.type==='text')
+                sessionTitle = textItem?.text || sessionTitle
+            }
+            sessionTitle = (sessionTitle || 'New Chat').slice(0,50)
+        }catch{}
+
+        // 本地先保存 conversationId，后端创建失败也不影响发送流程
+        chatSet.save({ conversationId: cid })
+
+        // 幂等保护：若后端已存在该 id，则不再创建，避免主键重复
+        const uuidNum = +st.value.uuid
+        ;(async () => {
+            let uid: number | undefined = undefined
+            try { const info = await getUserInfo(); uid = Number(info?.data?.user?.userId) } catch {}
+            let exists = false
+            try {
+                const resp: any = await getSessionById(uuidNum)
+                const data = resp?.data ?? resp?.rows ?? null
+                // 仅当返回有实体数据时视为存在；避免 200 + null 导致误判
+                exists = !!(data && (Array.isArray(data) ? data.length > 0 : true))
+                mlog('session exists check', { uuid: uuidNum, exists, raw: resp })
+            } catch { exists = false }
+            if (!exists) {
+                try { await createSession({ id: uuidNum, userId: uid, sessionTitle, conversationId: cid }); chatSet.save({ sessionSynced: true }) }
+                catch { /* 忽略错误，继续发送消息流程 */ }
+            } else {
+                chatSet.save({ sessionSynced: true })
+            }
+        })()
+    }
     
     // 保存新的配置参数
     chatSet.save({
