@@ -11,6 +11,10 @@ import { t } from '@/locales'
 import { defaultSetting,UserInfo } from '@/store/modules/user/helper'
 import { getToken } from "@/store/modules/auth/helper";
 import { getUserInfo } from "@/api/user";
+import { chatSetting } from '@/api'
+// 不在新建聊天时调用后端创建会话，改为首次发消息时再创建
+// import { createSession } from '@/api/session'
+import { useRouter } from 'vue-router'
 
 
 const Setting = defineAsyncComponent(() => import('@/components/common/Setting/index.vue'))
@@ -18,6 +22,7 @@ const Setting = defineAsyncComponent(() => import('@/components/common/Setting/i
 const appStore = useAppStore()
 const chatStore = useChatStore()
 const dialog = useDialog()
+const router = useRouter()
 
 const { isMobile } = useBasicLayout()
 const show = ref(false)
@@ -30,8 +35,36 @@ onMounted(() => {
   getLoginUserInfo();
 });
 
-function handleAdd() {
-  chatStore.addHistory({ title: 'New Chat', uuid: Date.now(), isEdit: false })
+async function handleAdd() {
+  try {
+    // 若已存在未发送消息的空会话，则复用该会话而不新增
+    const existingEmpty = chatStore.history.find((h) => {
+      if (h.title !== 'New Chat') return false
+      const c = chatStore.chat.find((x) => x.uuid === h.uuid)
+      return (c?.data?.length ?? 0) === 0
+    })
+
+    if (existingEmpty) {
+      await chatStore.setActive(existingEmpty.uuid)
+      router.replace({ name: 'Chat', params: { uuid: existingEmpty.uuid } })
+    } else {
+      // 直接本地生成会话ID，后端会在首次发送消息时创建
+      const localId = Date.now()
+      chatStore.addHistory({ title: 'New Chat', uuid: localId, isEdit: false })
+      await chatStore.setActive(localId)
+
+      // 为新会话建立独立的配置条目，并清空会话ID，避免沿用旧会话的 conversationId
+      const cs = new chatSetting(localId)
+      cs.save({ conversationId: undefined })
+      router.replace({ name: 'Chat', params: { uuid: localId } })
+    }
+  } catch (err) {
+    // 回退到本地新建
+    const localId = Date.now()
+    chatStore.addHistory({ title: 'New Chat', uuid: localId, isEdit: false })
+    await chatStore.setActive(localId)
+    router.replace({ name: 'Chat', params: { uuid: localId } })
+  }
   if (isMobile.value)
     appStore.setSiderCollapsed(true)
 }
@@ -118,7 +151,7 @@ const isLogin =computed(  () => {
   if(!getToken()){
       return
   }
-  const newUserInfo = await getUserInfo();
+ const newUserInfo = await getUserInfo();
   if(newUserInfo){
     if(newUserInfo.data.user.avatar){
       userInfo.value.avatar = newUserInfo.data.user.avatar;
@@ -126,6 +159,8 @@ const isLogin =computed(  () => {
     userInfo.value.name = newUserInfo.data.user.nickName;
     userInfo.value.userBalance = newUserInfo.data.user.userBalance;
     userInfo.value.userName = newUserInfo.data.user.userName;
+    // 记录用户ID以便创建会话时透传
+    (userInfo as any).value.userId = Number(newUserInfo.data.user.userId)
     isLogin.value = true
   }
 }

@@ -28,6 +28,7 @@ import {
   gptsType,
   mlog,
 } from "@/api"
+import { listBySession } from '@/api/chatmsg'
 import { t } from "@/locales"
 import drawListVue from "../mj/drawList.vue"
 import aiGPT from "../mj/aiGpt.vue"
@@ -65,6 +66,44 @@ const { promptList: promptTemplate } = storeToRefs<any>(promptStore)
 // 未知原因刷新页面，loading 状态不会重置，手动重置
 dataSources.value.forEach((item, index) => {
   if (item.loading) updateChatSome(+uuid, index, { loading: false })
+})
+
+// 进入会话窗口时，加载并展示后端历史对话记录
+async function loadHistoryBySession(sessionId: number) {
+  try {
+    const resp: any = await listBySession(sessionId, { pageNum: 1, pageSize: 100, orderByColumn: 'createTime', isAsc: 'asc' })
+    const rows: any[] = resp?.rows ?? resp?.data?.rows ?? []
+    // 替换本地会话消息
+    chatStore.clearChatByUuid(sessionId)
+    for (const r of rows) {
+      const chat: Chat.Chat = {
+        dateTime: String(r.createTime ?? new Date().toLocaleString()),
+        text: String(r.content ?? ''),
+        inversion: String(r.role ?? '').toLowerCase() === 'user',
+        error: false,
+        loading: false,
+        conversationOptions: null,
+        requestOptions: { prompt: String(r.role ?? '').toLowerCase() === 'user' ? String(r.content ?? '') : '', options: {} },
+        model: r.modelName ?? undefined,
+        uuid: sessionId,
+        myid: String(r.id ?? Date.now())
+      }
+      chatStore.addChatByUuid(sessionId, chat)
+    }
+  } catch (e) {
+    // 加载失败不影响页面，保留本地数据
+    mlog('loadHistoryBySession error', e)
+  }
+}
+
+onMounted(() => {
+  const sid = Number(uuid)
+  if (!Number.isNaN(sid) && sid > 0) loadHistoryBySession(sid)
+})
+
+watch(() => route.params?.uuid, (n) => {
+  const sid = Number(n)
+  if (!Number.isNaN(sid) && sid > 0) loadHistoryBySession(sid)
 })
 
 function handleSubmit() {

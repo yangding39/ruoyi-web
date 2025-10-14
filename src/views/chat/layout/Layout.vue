@@ -6,6 +6,7 @@ import Sider from './sider/index.vue'
 import Permission from './Permission.vue'
 import { useBasicLayout } from '@/hooks/useBasicLayout'
 import { gptConfigStore, homeStore, useAppStore, useAuthStore, useChatStore } from '@/store'
+import { chatSetting } from '@/api'
 import { aiSider,aiFooter} from '@/views/mj' 
 import aiMobileMenu from '@/views/mj/aiMobileMenu.vue'; 
 import { t } from '@/locales'
@@ -33,7 +34,37 @@ if(rt.name =='GPTs'){
   ms.success( t('mj.modleSuccess') );
 }
 
-router.replace({ name: 'Chat', params: { uuid: chatStore.active } })
+// 进入 Chat 页面且无 uuid 参数时，仅在本浏览器会话首次进入时自动新建。
+// 若已存在空的 New Chat，则复用；否则创建一次，并使用 sessionStorage 防重复。
+;(async () => {
+  if (rt.name !== 'Chat' || rt.params?.uuid) return
+
+  const createdFlag = sessionStorage.getItem('chat:autoNewCreated')
+
+  const empty = chatStore.history.find((h) => {
+    if (h.title !== 'New Chat') return false
+    const c = chatStore.chat.find((x) => x.uuid === h.uuid)
+    return (c?.data?.length ?? 0) === 0
+  })
+
+  if (createdFlag === '1') {
+    const targetId = empty?.uuid ?? chatStore.active ?? chatStore.history[0]?.uuid
+    if (targetId) await chatStore.setActive(targetId)
+    return
+  }
+
+  if (empty) {
+    await chatStore.setActive(empty.uuid)
+  } else {
+    const targetId = Date.now()
+    chatStore.addHistory({ title: 'New Chat', uuid: targetId, isEdit: false })
+    const cs = new chatSetting(targetId)
+    cs.save({ conversationId: undefined })
+    await chatStore.setActive(targetId)
+  }
+
+  sessionStorage.setItem('chat:autoNewCreated', '1')
+})()
 homeStore.setMyData({local:'Chat'});
 const { isMobile } = useBasicLayout()
 

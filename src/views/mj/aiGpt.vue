@@ -5,6 +5,7 @@ import { useChat } from '../chat/hooks/useChat'
 import {  homeStore, useChatStore } from '@/store'
 import { getInitChat, mlog, subModel,getSystemMessage , localSaveAny, canVisionModel
     ,isTTS, subTTS, file2blob, whisperUpload, getHistoryMessage, checkDisableGpt4, chatSetting, isCanBase64Model, } from '@/api'
+import { createSession } from '@/api/session'
 //import { isNumber } from '@/utils/is'
 import { useMessage  } from "naive-ui";
 import { t } from "@/locales";
@@ -17,9 +18,12 @@ const controller = ref<AbortController>( );;// new AbortController();
 const dataSources = computed(() => chatStore.getChatByUuid(+st.value.uuid))
 const ms= useMessage();
 const textRz= ref<string[]>([]);
+const finished = ref<boolean>(false);
 const goFinish= (  )=>{
     //let dindex = st.value.index>=0? st.value.index : dataSources.value.length - 1;
     //return ;
+    if (finished.value) return
+    finished.value = true
     updateChatSome( +st.value.uuid,  st.value.index , { dateTime: new Date().toLocaleString(),loading: false })
     //scrollToBottom();
     emit('finished');
@@ -47,6 +51,7 @@ const { uuid } = useRoute().params as { uuid: string }
 watch(()=>homeStore.myData.act, async (n)=>{
 
     if(n=='gpt.submit' ||  n=='gpt.whisper'  ){
+        finished.value = false
 
         const dd:any = homeStore.myData.actData;
 
@@ -61,6 +66,8 @@ watch(()=>homeStore.myData.act, async (n)=>{
 
         if(checkDisableGpt4( model )){
             ms.error( t('mj.disableGpt4') );
+            // 停止加载，避免需要手动点击“停止响应”
+            homeStore.setMyData({ act: 'stopLoading' })
             return false;
         }
 
@@ -127,6 +134,8 @@ watch(()=>homeStore.myData.act, async (n)=>{
                 //return ;
             }catch(e){
                 updateChatSome(  +uuid2, dataSources.value.length-1, {text:`${t('mj.fail')}：${e}` } );
+                // 捕获到 Whisper 失败时，主动停止加载
+                homeStore.setMyData({ act: 'stopLoading' })
                 return ;
             }
 
@@ -201,6 +210,7 @@ watch(()=>homeStore.myData.act, async (n)=>{
     }else if(n=='abort'){
        controller.value && controller.value.abort();
     }else if(n=='gpt.resubmit'){
+        finished.value = false
         //  if(checkDisableGpt4(gptConfigStore.myData.model)){
         //     ms.error( t('mj.disableGpt4') );
         //     return false;
@@ -219,22 +229,34 @@ watch(()=>homeStore.myData.act, async (n)=>{
 
         if(checkDisableGpt4(  model )){
             ms.error( t('mj.disableGpt4') );
+            homeStore.setMyData({ act: 'stopLoading' })
             return false;
         }
         //return ;
         if(['whisper-1','midjourney'].indexOf(model)>-1){
             ms.error( t('mj.noSuppertModel') );
+            homeStore.setMyData({ act: 'stopLoading' })
             return;
         }
 
         controller.value = new AbortController();
         let message= [ {  "role": "system", "content": getSystemMessage(+st.value.uuid ) },
                 ...historyMesg ];
+        // 重新生成时清空上一条助理消息的文本，避免将错误与新内容合并
+        try {
+            updateChatSome(+st.value.uuid, st.value.index, {
+                dateTime: new Date().toLocaleString(),
+                text: '',
+                error: false,
+                loading: true,
+            })
+        } catch {}
         textRz.value=[];
 
         submit(model, message);
 
     }else if(n=='gpt.ttsv2'){
+        finished.value = false
         const actData:any = homeStore.myData.actData;
         mlog('gpt.ttsv2',actData );
         st.value.index= actData.index;
@@ -261,15 +283,69 @@ watch(()=>homeStore.myData.act, async (n)=>{
             }).catch(e=>{
                 let  emsg =   (JSON.stringify(  e.reason? JSON.parse( e.reason ):e,null,2));
                 if(e.message!='canceled' && emsg.indexOf('aborted')==-1 ) textRz.value.push("\n"+t('mjchat.failReason')+" \n```\n"+emsg+"\n```\n");
-                //goFinish();
+                // TTS 失败也应结束加载
+                goFinish();
             });
     }
 })
+
+import { createSession, getSessionById } from '@/api/session'
+import { getUserInfo } from '@/api/user'
 
 const submit= (model:string, message:any[],opt?:any)=>{
     mlog('提交Model', model  );
     const chatSet = new chatSetting(   +st.value.uuid  );
     const nGptStore =   chatSet.getGptConfig()  ;
+    
+    // 若无会话ID，首次发消息时创建后端会话，并把本地 uuid 作为 id 透传
+    if(!nGptStore.conversationId){
+        // 生成短ID：移除连字符并截断至 32 字符，避免数据库列长度溢出
+        const cid = (() => {
+            try {
+                if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                    return crypto.randomUUID().replace(/-/g, '').slice(0, 32)
+                }
+                const raw = Date.now().toString(36) + Math.random().toString(36).slice(2)
+                return raw.replace(/[^a-z0-9]/gi, '').slice(0, 32)
+            } catch {
+                return ('c' + Date.now().toString(36)).slice(0, 32)
+            }
+        })()
+        const last = message[message.length-1]
+        let sessionTitle = 'New Chat'
+        try{
+            if(typeof last?.content === 'string') sessionTitle = last.content
+            else if(Array.isArray(last?.content)){
+                const textItem = last.content.find((c:any)=>c?.type==='text')
+                sessionTitle = textItem?.text || sessionTitle
+            }
+            sessionTitle = (sessionTitle || 'New Chat').slice(0,50)
+        }catch{}
+
+        // 本地先保存 conversationId，后端创建失败也不影响发送流程
+        chatSet.save({ conversationId: cid })
+
+        // 幂等保护：若后端已存在该 id，则不再创建，避免主键重复
+        const uuidNum = +st.value.uuid
+        ;(async () => {
+            let uid: number | undefined = undefined
+            try { const info = await getUserInfo(); uid = Number(info?.data?.user?.userId) } catch {}
+            let exists = false
+            try {
+                const resp: any = await getSessionById(uuidNum)
+                const data = resp?.data ?? resp?.rows ?? null
+                // 仅当返回有实体数据时视为存在；避免 200 + null 导致误判
+                exists = !!(data && (Array.isArray(data) ? data.length > 0 : true))
+                mlog('session exists check', { uuid: uuidNum, exists, raw: resp })
+            } catch { exists = false }
+            if (!exists) {
+                try { await createSession({ id: uuidNum, userId: uid, sessionTitle, conversationId: cid }); chatSet.save({ sessionSynced: true }) }
+                catch { /* 忽略错误，继续发送消息流程 */ }
+            } else {
+                chatSet.save({ sessionSynced: true })
+            }
+        })()
+    }
     
     // 保存新的配置参数
     chatSet.save({
@@ -332,12 +408,37 @@ const submit= (model:string, message:any[],opt?:any)=>{
                 uuid: st.value.uuid //当前会话
                 ,onMessage: (d) => {
                     mlog('🐞消息', d)
-                    textRz.value.push(d.text)
+                    if (finished.value) return
+                    // 检测后端流式返回中的错误文本，自动结束响应，无需手动点击停止
+                    const txt = d?.text ?? ''
+                    const isModelError = typeof txt === 'string' && (
+                        txt.includes('未找到模型名称') ||
+                        txt.includes('模型选择和服务获取失败') ||
+                        txt.toLowerCase().includes('model') && txt.toLowerCase().includes('not found')
+                    )
+                    if (isModelError) {
+                        // 解除当前错误会话绑定，下次重新建立新会话，避免沿用错误的会话配置
+                        try { const cs = new chatSetting(+st.value.uuid); cs.save({ conversationId: undefined }) } catch {}
+                        // 标记当前消息为错误，供下次构建上下文时剔除
+                        try { updateChatSome(+st.value.uuid, st.value.index, { error: true }) } catch {}
+                        textRz.value.push("\n" + t('mjchat.failReason') + "\n```\n" + txt + "\n```\n")
+                        goFinish()
+                        return
+                    }
+                    textRz.value.push(txt)
                 },
                 onError: (e: any) => {
                     mlog('onError', e)
                     let emsg = (JSON.stringify(e.reason ? JSON.parse(e.reason) : e, null, 2))
                     //if(emsg=='{}' ) emsg= JSON.stringify(e );
+                    // 如果是模型错误，重置会话ID以便下一次重新建立会话
+                    try {
+                      const raw = typeof e?.reason === 'string' ? e.reason : emsg
+                      const hit = raw && (raw.includes('未找到模型名称') || raw.includes('模型选择和服务获取失败'))
+                      if (hit) { const cs = new chatSetting(+st.value.uuid); cs.save({ conversationId: undefined }) }
+                    } catch {}
+                    // 标记为错误，避免下一次把错误文本带入上下文
+                    try { updateChatSome(+st.value.uuid, st.value.index, { error: true }) } catch {}
                     if (e.message != 'canceled' && emsg.indexOf('aborted') == -1) textRz.value.push("\n" + t('mjchat.failReason') + "\n```\n" + emsg + "\n```\n")
                     goFinish()
                 },

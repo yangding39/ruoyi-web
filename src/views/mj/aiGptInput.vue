@@ -106,6 +106,7 @@ const handleSubmit = () => {
     fileBase64: st.value.fileBase64,
     chatType: st.value.chatType ? 1 : 0,
     appId: gptConfigStore.myData.gpts ? gptConfigStore.myData.gpts.id : "",
+    uuid: chatStore.active ?? (uuid ? +uuid : undefined)
   };
   homeStore.setMyData({ act: "gpt.submit", actData: obj });
   mvalue.value = "";
