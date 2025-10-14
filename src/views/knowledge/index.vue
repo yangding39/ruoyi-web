@@ -65,10 +65,10 @@ async function submitForm() {
 	}
 }
 
-async function delKnowledgeForm(id: string) {
+async function delKnowledgeForm(kid: string) {
 	// 发起一个请求
 	const req = {
-		id: id, // 附件id
+		kid: kid, // 知识库id
 	};
 	const result = await delKnowledge(req);
 	if (result.code == 200) {
@@ -161,7 +161,7 @@ const createColumns = () => {
 					h(
 						NButton,
 						{
-							onClick: () => delKnowledgeForm(row.id),
+							onClick: () => delKnowledgeForm(row.kid),
 							style: "margin-left: 8px; color: #FF4500;",
 							class: "table-button",
 							bordered: false,
@@ -242,7 +242,7 @@ const fetchData = async () => {
 									<n-button size="small" @click="handleActionButtonClick(item, 'action3')" type="primary" ghost>
 										{{ $t("knowledge.attachment") }}
 									</n-button>
-									<n-button size="small" @click="delKnowledgeForm(item.id)" type="error" ghost>
+									<n-button size="small" @click="delKnowledgeForm(item.kid)" type="error" ghost>
 										{{ $t("knowledge.delete") }}
 									</n-button>
 								</n-space>
