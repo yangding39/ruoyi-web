@@ -110,6 +110,20 @@ const routes: RouteRecordRaw[] = [
   },
 
   {
+    path: '/workflow',
+    name: 'WorkflowRoot',
+    component: () => import('@/views/workflow/layout.vue'),
+    redirect: '/workflow/index',
+    children: [
+      {
+        path: 'index',
+        name: 'Workflow',
+        component: () => import('@/views/workflow/index.vue'),
+      },
+    ],
+  },
+
+  {
     path: '/annex',
     name: 'Annex',
     component: knowledgelayout,
