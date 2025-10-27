@@ -62,7 +62,7 @@ export function get<T = any>(
     signal,
     beforeRequest,
     afterRequest,
-  })
+  }) as Promise<Response<T>>
 }
 
 export function post<T = any>(
@@ -77,7 +77,7 @@ export function post<T = any>(
     signal,
     beforeRequest,
     afterRequest,
-  })
+  }) as Promise<Response<T>>
 }
 
 export default post

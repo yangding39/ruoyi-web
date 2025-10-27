@@ -52,7 +52,8 @@ const formValue = ref({
 	retrieveLimit: 3, // 知识库中检索的条数
 	textBlockSize: 500, // 文本块大小
 	vectorModelName: "weaviate", //  向量库
-	embeddingModelName: "baai/bge-m3", //  向量模型
+	embeddingModelId: "", //  向量模型ID
+	embeddingModelName: "", //  向量模型
 	promptTemplateId: "", //  提示词模板ID
 	externalKnowledgeApiId: "", // 外部知识库API配置ID
 	externalKnowledgeId: "", // 外部知识库ID
@@ -61,6 +62,7 @@ const formValue = ref({
 async function submitForm() {
 	// 关闭弹框
 	active.value = false;
+	console.log(formValue.value)
 	const result = await createKnowledgeReq(formValue.value);
 	if (result.code == 200) {
 		message.success("添加成功");
@@ -69,10 +71,10 @@ async function submitForm() {
 	}
 }
 
-async function delKnowledgeForm(id: string) {
+async function delKnowledgeForm(kid: string) {
 	// 发起一个请求
 	const req = {
-		id: id, // 附件id
+		kid: kid, // 知识库id
 	};
 	const result = await delKnowledge(req);
 	if (result.code == 200) {
@@ -105,6 +107,7 @@ const placement = ref<DrawerPlacement>("right");
 
 const getVector = reactive([
 	{ label: "weaviate", value: "weaviate" },
+	{ label: "milvus", value: "milvus" },
 ]);
 
 const providerOptions = ref([
@@ -180,7 +183,7 @@ const createColumns = () => {
 					h(
 						NButton,
 						{
-							onClick: () => delKnowledgeForm(row.id),
+							onClick: () => delKnowledgeForm(row.kid),
 							style: "margin-left: 8px; color: #FF4500;",
 							class: "table-button",
 							bordered: false,
@@ -232,7 +235,10 @@ const fetchData = async () => {
 	}
 };
 
-
+const handleEmbeddingModelChange = (value) => {
+	const selectedOption = getVectorModel.value.find(option => option.id === value);
+	formValue.value.embeddingModelName = selectedOption ? selectedOption.modelName : '';
+};
 </script>
 
 <template>
@@ -261,7 +267,7 @@ const fetchData = async () => {
 									<n-button size="small" @click="handleActionButtonClick(item, 'action3')" type="primary" ghost>
 										{{ $t("knowledge.attachment") }}
 									</n-button>
-									<n-button size="small" @click="delKnowledgeForm(item.id)" type="error" ghost>
+									<n-button size="small" @click="delKnowledgeForm(item.kid)" type="error" ghost>
 										{{ $t("knowledge.delete") }}
 									</n-button>
 								</n-space>
@@ -348,8 +354,9 @@ const fetchData = async () => {
 
 						<n-gi :span="12">
 							<n-form-item label="向量模型" required>
-								<n-select :options="getVectorModel" v-model:value="formValue.embeddingModelName"
-									value-field="modelName" label-field="modelName" placeholder="请选择向量模型"
+								<n-select :options="getVectorModel" v-model:value="formValue.embeddingModelId"
+													@update:value="handleEmbeddingModelChange"
+									value-field="id" label-field="modelName" placeholder="请选择向量模型"
 									clearable></n-select>
 							</n-form-item>
 						</n-gi>
